@@ -1,18 +1,27 @@
 package helper
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
+	"sync"
 
 	"github.com/projectdiscovery/gologger"
 )
 
 type Student struct {
-	Name  string
-	Id    int
-	Marks map[string]int
+	Name  string         `json:"name"`
+	Id    int            `json:"id"`
+	Marks map[string]int `json:"marks"`
 }
 
-var students []Student //for all students overall application
+// var students []Student //for all students overall application
+var (
+	students []Student
+	nextID   int = 1
+	mu       sync.Mutex
+)
 
 func AddNewStudent() {
 	var student Student //for each student to be add in students
@@ -59,9 +68,9 @@ func GetAllStudents() {
 	if len(students) == 0 {
 		gologger.Error().Msgf("There Is No Student Present")
 	}
-
+	fmt.Println("The All Students Are\n :")
 	for _, student := range students {
-		fmt.Println("The All Students Are\n :", student)
+		fmt.Println(student)
 	}
 }
 
@@ -102,4 +111,99 @@ func DeleteStudentById() {
 		}
 	}
 
+}
+
+func SaveToFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		gologger.Error().Msgf("Failed to create file: %v", err)
+		return
+	}
+	defer file.Close()
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(students); err != nil {
+		gologger.Error().Msgf("Failed to save data: %v", err)
+		return
+	}
+	gologger.Info().Msg("Student Information Saved Successfully")
+}
+
+func LoadFromFile(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		gologger.Error().Msgf("Failed to Open File: %v", err)
+		return
+	}
+	defer file.Close()
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&students); err != nil {
+		gologger.Error().Msgf("Failed to Load Data: %v", err)
+		return
+	}
+	gologger.Info().Msg("Data Loaded Successfully")
+	if len(students) > 0 {
+		mu.Lock()
+		nextID = students[len(students)-1].Id + 1
+		mu.Unlock()
+	}
+}
+
+func SortStudentsBySubject(subject string) {
+	sort.Slice(students, func(i, j int) bool {
+		return students[i].Marks[subject] > students[j].Marks[subject]
+	})
+	gologger.Info().Msg("Students sorted by subject marks")
+	GetAllStudents()
+}
+
+func AverageMarks(subject string) {
+	total := 0
+	count := 0
+	for _, student := range students {
+		if mark, exists := student.Marks[subject]; exists {
+			total += mark
+			count++
+		}
+	}
+	if count == 0 {
+		gologger.Warning().Msg("No marks available for the subject")
+		return
+	}
+	fmt.Printf("Average marks in %s: %.2f\n", subject, float64(total)/float64(count))
+}
+
+func HighestMarksInSubject(subject string) {
+	var topStudent *Student
+	maxMarks := -1
+	for _, student := range students {
+		if mark, exists := student.Marks[subject]; exists && mark > maxMarks {
+			topStudent = &student
+			maxMarks = mark
+		}
+	}
+	if topStudent == nil {
+		gologger.Warning().Msg("No marks available for the subject")
+		return
+	}
+	fmt.Printf("Top student in %s: %s with %d marks\n", subject, topStudent.Name, maxMarks)
+}
+
+func HighestTotalMarks() {
+	var topStudent *Student
+	maxTotal := -1
+	for _, student := range students {
+		total := 0
+		for _, marks := range student.Marks {
+			total += marks
+		}
+		if total > maxTotal {
+			topStudent = &student
+			maxTotal = total
+		}
+	}
+	if topStudent == nil {
+		gologger.Warning().Msg("No students available")
+		return
+	}
+	fmt.Printf("Top student in batch: %s with %d total marks\n", topStudent.Name, maxTotal)
 }
